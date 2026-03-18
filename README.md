@@ -9,7 +9,16 @@
 
 3. In /chatbot, copy and rename '.env.example' to '.env' in the same directory. Add your API keys or paths to local Ollama models.
 
-4 .To run the application from the main directory:
+## To enable authentication:
+
+4. In /chatbot, edit .env and set:
+```bash
+AUTH_ENABLED=false
+```
+
+## To run the application:
+
+4. From the main directory:
 ```bash
 ./start.sh
 ```
