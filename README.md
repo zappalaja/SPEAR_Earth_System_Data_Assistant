@@ -5,9 +5,9 @@
 
 1. Clone this repository into your terminal.
 
-2. Copy the chatbot.conf.template and rename as chatbot.conf. Edit the paths in the conf as needed.
+2. Copy the 'chatbot.conf.template' and rename as 'chatbot.conf'. Edit the paths in the conf as needed.
 
-3. In /chatbot, copy and rename .env.example to .env in the same directory. Add your API keys or paths to local Ollama models.
+3. In /chatbot, copy and rename '.env.example' to '.env' in the same directory. Add your API keys or paths to local Ollama models.
 
 4 .To run the application from the main directory:
 ```bash
