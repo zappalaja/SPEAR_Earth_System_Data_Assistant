@@ -1,6 +1,6 @@
 # SPEAR Earth System Data Assistant
 
-#### Steps to running this chatbot locally:
+### Steps to running this chatbot locally:
 #### *Please Note: You will either need an API key or Ollama with a local model downloaded in order to use the chatbot features.
 
 1. Clone this repository into your terminal.
