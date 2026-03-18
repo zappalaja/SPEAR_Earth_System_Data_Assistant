@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Climate Chatbot Launcher with CMIP6 Zarr MCP Server
+# Climate Chatbot Launcher
 #
 # This script starts the complete chatbot stack:
 #   1. RAG Service (document retrieval) - Port 8002
-#   2. MCP Server with Zarr tools - Port 8000
+#   2. MCP Server - Port 8000
 #   3. Streamlit Chatbot UI - Port 8501
 #
 # Usage: ./start.sh
