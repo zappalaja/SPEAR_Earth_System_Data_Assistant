@@ -13,16 +13,23 @@
 
 4. In /chatbot, edit .env and set:
 ```bash
-AUTH_ENABLED=false
+AUTH_ENABLED=true
+```
+
+## To enable persistent conversation history between sessions:
+
+5. In /chatbot, edit .env and set:
+```bash
+PERSIST_CONVERSATIONS=true
 ```
 
 ## To run the application:
 
-4. From the main directory:
+6. From the main directory:
 ```bash
 ./start.sh
 ```
 
-5. Access the chatbot from browser at: https://localhost:8501
+7. Access the chatbot from browser at: https://localhost:8501
 
 If you do not see the dashboard at the link above, ensure the application has proper permissions to to bind to the local port (8501).
