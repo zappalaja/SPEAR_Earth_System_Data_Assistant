@@ -2,7 +2,8 @@
 # Copy this file to chatbot.conf and fill in your values.
 
 # ChromaDB location (where ingested documents are stored)
-CHROMA_PERSIST_DIR="/home/YOUR_USERNAME/path/to/chroma_db"
+# "/home/YOUR_USERNAME/path/to/chroma_db"
+CHROMA_PERSIST_DIR="rag-service/ingestion/chroma_db"
 
 # ChromaDB collection name
 CHROMA_COLLECTION="nougat_merged"
