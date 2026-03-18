@@ -33,7 +33,7 @@ GEMINI_MODELS = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
 ]
-DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"  # Default model for Gemini provider
+DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"  # Default model for Gemini provider
 
 # General Settings
 MAX_TOKENS = 4096  # Increased to allow full explanations
