@@ -1,0 +1,32 @@
+# Sensitive files - NEVER include in container
+.env
+.env.*
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+chat_logs/
+logs/
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in container)
+*.md
+BUGFIXES.md
+CONTEXT_MEMORY_FIX.md
+RAG_TOOL_FIXES.md
+STREAMING_TOOL_BUG_FIX.md
+
+# Development files
+.venv/
+venv/
+.idea/
+.vscode/

@@ -1,0 +1,14 @@
+cookie:
+  expiry_days: 30
+  key: ddba79fd26c1f14993c1bc199dc6d618f1d4fe2dd6e108760ffb9b4a6d0e6a9a
+  name: spear_chatbot_auth
+credentials:
+  usernames:
+    Jake2:
+      avatar: Geophysical Fluid Dynamics Laboratory.png
+      name: Jake2
+      password: $2b$12$/njizVzODRRkxJ4U0hTLy.8ZliCErPgC3/loDflNVgIyIcT0kqRtS
+    JakeZ:
+      avatar: Geophysical Fluid Dynamics Laboratory.png
+      name: JakeZ
+      password: $2b$12$h3FsmvzD3i1ipO4Q7c15eOwjq6nTWqqLb/iwOSxRlwupRI9mGfzf.

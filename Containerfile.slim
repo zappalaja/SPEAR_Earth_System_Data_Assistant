@@ -1,0 +1,90 @@
+# Containerfile.slim — SPEAR Climate Chatbot (without ingestion pipeline)
+#
+# Lightweight variant (~4-5 GB) that runs:
+#   - RAG Service (port 8002) — query/retrieval only, no /ingest endpoint
+#   - MCP Server (port 8000)
+#   - Streamlit Chatbot (port 8501)
+#
+# For document ingestion (Nougat OCR + embedding), use the full Containerfile
+# or run the ingestion pipeline on the host machine.
+#
+# API keys are NEVER baked into the image. Pass them at runtime:
+#   podman run -e GEMINI_API_KEY=your_key -p 8501:8501 spear-earth-system-data-assistant:slim
+#
+# ChromaDB and merged markdown must be volume-mounted:
+#   -v /path/to/chroma_db:/app/chroma_db
+#   -v /path/to/nougat_merged_md:/app/nougat_merged_md
+
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    git \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (needed for MCP server)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# ---------- Install CPU-only PyTorch first (saves ~4-5 GB over default CUDA bundle) ----------
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# ---------- RAG Service dependencies ----------
+COPY rag-service/requirements.txt /app/rag-service/requirements.txt
+RUN pip install --no-cache-dir -r /app/rag-service/requirements.txt
+
+# ---------- Chatbot dependencies ----------
+COPY chatbot/requirements.txt /app/chatbot/requirements.txt
+RUN pip install --no-cache-dir -r /app/chatbot/requirements.txt
+
+# ---------- MCP Server dependencies (installed via uv) ----------
+COPY mcp-server/ /app/mcp-server/
+RUN cd /app/mcp-server && uv sync --frozen
+
+# ---------- Copy application code ----------
+COPY rag-service/rag_service.py /app/rag-service/
+COPY chatbot/*.py chatbot/*.yaml /app/chatbot/
+COPY chatbot/pages/ /app/chatbot/pages/
+COPY chatbot/avatars/ /app/chatbot/avatars/
+COPY chatbot/bot_avatar/ /app/chatbot/bot_avatar/
+COPY chatbot/background/ /app/chatbot/background/
+COPY chatbot/.streamlit/ /app/chatbot/.streamlit/
+
+# ---------- Copy entrypoint ----------
+COPY container-entrypoint.sh /app/container-entrypoint.sh
+RUN chmod +x /app/container-entrypoint.sh
+
+# Create log and data directories
+RUN mkdir -p /app/logs /app/chatbot/chat_logs /app/chroma_db /app/nougat_merged_md
+
+# ---------- Default environment ----------
+# Service URLs (internal to container — localhost since all services run here)
+ENV MCP_SERVER_URL=http://localhost:8000
+ENV RAG_API_URL=http://localhost:8002
+ENV RAG_ENABLED=true
+ENV RAG_TOP_K=2
+ENV LOGGING_ENABLED=true
+ENV CHAT_LOG_DIR=/app/chatbot/chat_logs
+
+# ChromaDB and document store defaults (override via env or volume mount)
+ENV CHROMA_PERSIST_DIR=/app/chroma_db
+ENV CHROMA_COLLECTION=nougat_merged
+ENV EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+ENV MERGED_MD_DIR=/app/nougat_merged_md
+
+# API keys must be provided at runtime via:
+#   --env-file .env
+#   -e GEMINI_API_KEY=your_key
+#   -e ANTHROPIC_API_KEY=your_key
+
+EXPOSE 8501
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+ENTRYPOINT ["/app/container-entrypoint.sh"]

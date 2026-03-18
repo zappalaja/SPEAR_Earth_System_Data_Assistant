@@ -1,0 +1,14 @@
+# chatbot.conf — external paths and environment settings
+# Copy this file to chatbot.conf and fill in your values.
+
+# ChromaDB location (where ingested documents are stored)
+CHROMA_PERSIST_DIR="/home/YOUR_USERNAME/path/to/chroma_db"
+
+# ChromaDB collection name
+CHROMA_COLLECTION="nougat_merged"
+
+# Sentence transformer model for embeddings
+EMBED_MODEL="sentence-transformers/all-MiniLM-L6-v2"
+
+# Conda environment name for the RAG service
+CONDA_ENV="rag"

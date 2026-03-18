@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  rag-service:
+    build: .
+    container_name: spear-rag-service
+    ports:
+      - "8002:8002"
+    volumes:
+      # Set CHROMA_PERSIST_DIR in your environment before running docker-compose
+      - ${CHROMA_PERSIST_DIR}:/app/chroma_db:ro
+    environment:
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+      - CHROMA_COLLECTION=nougat_merged
+      - EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
