@@ -179,9 +179,9 @@ wait_for_service "RAG Service" "http://localhost:$RAG_PORT/health" || {
 }
 
 # ============================================================
-# Service 2: Start MCP Server (with Zarr tools)
+# Service 2: Start MCP Server
 # ============================================================
-echo -e "${BLUE}[2/3] Starting MCP Server (CMIP6 Zarr)...${NC}"
+echo -e "${BLUE}[2/3] Starting MCP Server...${NC}"
 
 (
     cd "$MCP_DIR"
