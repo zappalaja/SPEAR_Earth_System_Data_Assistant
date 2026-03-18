@@ -127,7 +127,6 @@ wait_for_service() {
 echo ""
 echo "============================================================"
 echo "  Climate Chatbot Launcher"
-echo "  with CMIP6 Zarr MCP Server"
 echo "============================================================"
 echo ""
 
