@@ -934,9 +934,7 @@ def get_provider(provider_type: str, **kwargs) -> LLMProvider:
     elif provider_type.lower() == "gemini":
         return GeminiProvider(**kwargs)
     elif provider_type.lower() == "ollama":
-        raise ValueError("Ollama is disabled for container deployment. Use 'gemini' or 'claude' instead.")
-    else:
-        raise ValueError(f"Unknown provider: {provider_type}. Use 'gemini' or 'claude'.")
+        return OllamaProvider(**kwargs)
 
 
 def get_all_available_models() -> dict[str, list[str]]:
