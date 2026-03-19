@@ -422,7 +422,7 @@ def _run_ingestion(job_id: str, staging_dir: Path):
             "NOUGAT_OUT_DIR": str(staging_dir / "nougat_out"),
             "MERGED_MD_DIR": str(staging_dir / "merged_md"),
             "LOG_DIR": str(staging_dir / "logs"),
-            "CONDA_ENV": "nougat",
+            "CONDA_ENV": os.environ.get("NOUGAT_CONDA_ENV", "nougat"),
             "NOUCAT_EXTRA_ARGS": "--markdown",
         })
 
@@ -451,7 +451,7 @@ def _run_ingestion(job_id: str, staging_dir: Path):
             "EMBEDDING_MODEL": EMBED_MODEL,
             "CHUNK_SIZE": "1200",
             "CHUNK_OVERLAP": "150",
-            "CONDA_ENV": "rag",
+            "CONDA_ENV": os.environ.get("CONDA_ENV", "spear"),
         })
 
         rag_script = scripts / "rag_stage.sh"
