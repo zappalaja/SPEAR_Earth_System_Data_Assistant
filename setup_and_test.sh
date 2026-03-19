@@ -160,7 +160,10 @@ if [ "$VERIFY_ONLY" = false ]; then
                 pytorch-lightning \
                 chromadb \
                 timm==0.5.4 \
-                albumentations \
+                albumentations==1.3.0 \
+                transformers==4.30.2 \
+                tokenizers==0.13.3 \
+                pypdfium2==4.24.0 \
                 pypdf \
                 2>&1 | tail -5; then
                 pass "Conda env 'nougat' created with all dependencies"
