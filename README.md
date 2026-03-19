@@ -72,15 +72,7 @@ The chatbot supports uploading new climate research PDFs for ingestion. This req
 
 ## Container Deployment
 
-Pre-built container images are also available on Docker Hub:
-
-```bash
-# Slim image (chat + query only, ~4-5 GB)
-./run-container-slim.sh
-
-# Full image (includes ingestion pipeline)
-./run-container.sh
-```
+Instructions coming soon!
 
 ## Legacy Setup
 
