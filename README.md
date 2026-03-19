@@ -73,7 +73,3 @@ The chatbot supports uploading new climate research PDFs for ingestion. This req
 ## Container Deployment
 
 Instructions coming soon!
-
-## Legacy Setup
-
-The original `start.sh` launcher is still available for users with the previous multi-environment setup (separate `rag` conda env, chatbot venv, and `uv` for the MCP server).
