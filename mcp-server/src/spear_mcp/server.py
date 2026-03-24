@@ -179,7 +179,7 @@ async def create_server() -> FastMCP:
     @mcp.custom_route('/tools', methods=['GET'])
     async def list_tools(request: Request) -> JSONResponse:
         tool_list = []
-        tools = await mcp.list_tools()
+        tools = await mcp.get_tools()
         for t in tools:
             tool_list.append({
                 "name": t.name,
