@@ -1,0 +1,18 @@
+# Secrets — NEVER commit
+.env.prod
+.env
+
+# SSL certificates
+certbot/
+
+# Runtime data
+data/chat_logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
