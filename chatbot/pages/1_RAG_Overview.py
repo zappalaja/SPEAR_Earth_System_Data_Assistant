@@ -174,26 +174,34 @@ with tab_search:
 # TAB 3: Ingest New Documents
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_ingest:
-    st.markdown(
-        "Upload PDF documents to add them to the RAG knowledge base. "
-        "Documents are processed with **Nougat OCR** for high-quality text extraction, "
-        "then chunked and embedded into the vector database. "
-        "Pages which are difficult for Nougat OCR text extraction fallback to **PyPDF** "
-        "(usually pages with figures)."
-    )
-    st.warning(
-        "Nougat OCR can be slow, especially without GPU access. "
-        "Processing may take several minutes per document."
-    )
+    INGESTION_ENABLED = os.environ.get("INGESTION_ENABLED", "false").lower() == "true"
 
-    uploaded_files = st.file_uploader(
-        "Choose PDF files",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key="pdf_uploader",
-    )
+    if not INGESTION_ENABLED:
+        st.info(
+            "PDF ingestion is temporarily disabled on this server due to memory constraints. "
+            "To enable it, set `INGESTION_ENABLED=true` in `chatbot/.env`."
+        )
+    else:
+        st.markdown(
+            "Upload PDF documents to add them to the RAG knowledge base. "
+            "Documents are processed with **Nougat OCR** for high-quality text extraction, "
+            "then chunked and embedded into the vector database. "
+            "Pages which are difficult for Nougat OCR text extraction fallback to **PyPDF** "
+            "(usually pages with figures)."
+        )
+        st.warning(
+            "Nougat OCR can be slow, especially without GPU access. "
+            "Processing may take several minutes per document."
+        )
 
-    if uploaded_files and st.button("Start Ingestion", key="ingest_btn"):
+        uploaded_files = st.file_uploader(
+            "Choose PDF files",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="pdf_uploader",
+        )
+
+    if INGESTION_ENABLED and uploaded_files and st.button("Start Ingestion", key="ingest_btn"):
         with st.status("Ingesting documents...", expanded=True) as status:
             st.write(f"Uploading {len(uploaded_files)} file(s)...")
             result = start_ingestion(uploaded_files)
