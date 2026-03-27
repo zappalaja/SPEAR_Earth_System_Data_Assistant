@@ -12,3 +12,7 @@ credentials:
       avatar: Geophysical Fluid Dynamics Laboratory.png
       name: JakeZ
       password: $2b$12$h3FsmvzD3i1ipO4Q7c15eOwjq6nTWqqLb/iwOSxRlwupRI9mGfzf.
+    ASCE:
+      avatar: Geophysical Fluid Dynamics Laboratory.png
+      name: ASCE
+      password: $2b$12$0MborQrP5YnNf2xIs0Q0peuNgeOxIRrDP4INn8LdBWCzxbwdLDoAy

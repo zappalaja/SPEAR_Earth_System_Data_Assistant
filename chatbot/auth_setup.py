@@ -349,9 +349,8 @@ def setup_auth():
             st.session_state._auth_view = "login"
             st.rerun()
     with col2:
-        if st.button("Register", use_container_width=True):
-            st.session_state._auth_view = "register"
-            st.rerun()
+        st.button("Register", use_container_width=True, disabled=True,
+                  help="Registration is temporarily disabled")
 
     if st.session_state.get("_register_success"):
         name = st.session_state.pop("_register_success")
