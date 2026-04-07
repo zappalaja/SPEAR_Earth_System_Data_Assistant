@@ -42,6 +42,7 @@ dependencies:
 
       # ── MCP Server ────────────────────────────────────────────
       - aiofiles>=24.1.0
+      - arraylake>=0.30.0
       - async-lru>=2.0.5
       - beautifulsoup4>=4.12.0
       - cartopy>=0.25.0

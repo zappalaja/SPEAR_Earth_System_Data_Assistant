@@ -2,8 +2,12 @@
 Ollama/OpenAI-style Tool Definitions for SPEAR MCP Tools and Plotting
 """
 
-# Tool definitions in OpenAI-compatible format (used by Ollama)
-OLLAMA_TOOLS = [
+import os
+ENABLE_NETCDF_TOOLS = os.environ.get("ENABLE_NETCDF_TOOLS", "false").lower() in ("true", "1", "yes")
+ENABLE_ARRAYLAKE_TOOLS = os.environ.get("ENABLE_ARRAYLAKE_TOOLS", "true").lower() in ("true", "1", "yes")
+
+# NetCDF / CMIP6 Zarr tool definitions (opt-in via ENABLE_NETCDF_TOOLS env var)
+NETCDF_OLLAMA_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -243,3 +247,176 @@ OLLAMA_TOOLS = [
         },
     },
 ]
+
+# ArrayLake tool definitions (default)
+ARRAYLAKE_OLLAMA_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_plot",
+            "description": "Create a plot from data you already have. DO NOT query data again - use values from previous tool results. Pass a JSON string with: plot_type, data, title, xlabel, ylabel, and style. CONVERT UNITS FIRST: multiply precipitation by 86400 (kg/m²/s to mm/day), subtract 273.15 from temperature (K to °C). DATA FORMAT: For a SINGLE series use data: {x: [...], y: [...]}. For MULTIPLE series use data: {series: [{x: [...], y: [...], label: 'Series 1', color: 'red'}, {x: [...], y: [...], label: 'Series 2', color: 'blue'}]}. Each series object can also have: linewidth, marker, markersize, linestyle, alpha, edgecolor. ALWAYS use the multi-series format when comparing multiple datasets (e.g. different scenarios, variables, locations, or ensemble members). Style options: 'color', 'alpha', 'ylim'/'xlim' ([min,max]), 'title_fontsize', 'label_fontsize', 'tick_fontsize' (number), 'title_fontweight', 'label_fontweight', 'tick_fontweight' ('bold'/'normal'), 'fontsize' (default for all text), 'fontweight' (default for all text), 'tick_rotation_x'/'tick_rotation_y' (degrees), 'figsize' ([w,h]), 'linewidth', 'linestyle', 'marker', 'markersize', 'edgecolor', 'barwidth', 'value_fontsize', 'grid'/'grid_alpha'/'grid_color', 'facecolor'. METADATA BOX (the tan info box showing Location, Variable, Source, etc.): 'metadata' (dict with location/coordinates/scenario/year/time_range/ensemble/variable/source), 'metadata_fontsize', 'metadata_fontweight' ('bold'/'normal'), 'metadata_fontstyle' ('italic'/'normal'), 'metadata_fontcolor', 'metadata_fontfamily', 'metadata_facecolor' (box background color, default 'wheat'), 'metadata_edgecolor', 'metadata_alpha' (0-1), 'metadata_position' ('upper left'/'upper right'/'lower left'/'lower right'/'upper center'/'lower center' or [x,y] coords). LEGEND (for labeling data series): 'legend' (true to show), 'legend_loc', 'legend_fontsize', 'legend_fontweight', 'legend_fontstyle', 'legend_fontcolor', 'legend_fontfamily', 'legend_title', 'legend_title_fontsize', 'legend_title_fontweight', 'legend_frameon' (true/false), 'legend_framealpha', 'legend_facecolor', 'legend_edgecolor', 'legend_shadow', 'legend_ncol', 'legend_markerscale', 'legend_borderpad'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plot_config": {
+                        "type": "string",
+                        "description": "JSON string. Single series example: {\"plot_type\": \"bar\", \"data\": {\"x\": [\"Jan\", \"Feb\", \"Mar\"], \"y\": [2.97, 0.15, 0.95]}, \"title\": \"Precipitation\", \"xlabel\": \"Month\", \"ylabel\": \"mm/day\"}. Multi-series example: {\"plot_type\": \"line\", \"data\": {\"series\": [{\"x\": [2020,2021,2022], \"y\": [14.5,15.0,15.2], \"label\": \"Historical\", \"color\": \"blue\"}, {\"x\": [2020,2021,2022], \"y\": [15.0,15.8,16.5], \"label\": \"SSP5-8.5\", \"color\": \"red\"}]}, \"title\": \"Temperature Comparison\", \"xlabel\": \"Year\", \"ylabel\": \"Temperature (°C)\", \"style\": {\"legend\": true}}"
+                    }
+                },
+                "required": ["plot_config"]
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "test_arraylake_connection",
+            "description": "Test connection to the SPEAR ArrayLake repository. With no arguments, lists top-level groups. With a group path, returns dataset dimensions and variables.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group": {
+                        "type": "string",
+                        "description": "Optional Zarr group path (e.g. 'historical/Amon'). If omitted, opens root."
+                    }
+                },
+                "required": []
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browse_arraylake_repo",
+            "description": "Browse the Zarr hierarchy in the SPEAR ArrayLake repository. Lists groups and arrays from a starting path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Starting path (e.g. 'historical'). Omit for root."
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "How many levels deep to recurse (default 2, max 4)"
+                    }
+                },
+                "required": []
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_arraylake_store_info",
+            "description": "Get metadata from a SPEAR Zarr group on ArrayLake without loading data. Returns dimensions, variables, and optionally full coordinate details.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group": {
+                        "type": "string",
+                        "description": "Zarr group path (e.g. 'historical/Amon', 'scenarioSSP5-85/day')"
+                    },
+                    "include_full_details": {
+                        "type": "boolean",
+                        "description": "If true, includes coordinate values and variable attributes (slower)"
+                    }
+                },
+                "required": []
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_arraylake_data",
+            "description": "Query SPEAR Zarr data on ArrayLake with spatial/temporal/ensemble subsetting. Data has dimensions (member_id: 30, time, [plev], lat: 360, lon: 576).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "variable": {
+                        "type": "string",
+                        "description": "Variable name (e.g. 'tas', 'pr', 'uas')"
+                    },
+                    "group": {
+                        "type": "string",
+                        "description": "Experiment + frequency path (e.g. 'historical/Amon', 'scenarioSSP5-85/day'). Default: 'historical/Amon'"
+                    },
+                    "member_id": {
+                        "description": "Ensemble member(s): integer 1-30 or string like 'r1i1p1f1'. Can be a single value or list.",
+                        "oneOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                            {"type": "array", "items": {"oneOf": [{"type": "integer"}, {"type": "string"}]}}
+                        ]
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date (e.g. '1921-01' or '2020-01-15')"
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date (e.g. '2014-12' or '2020-12-31')"
+                    },
+                    "lat_range": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "[min_lat, max_lat] in degrees (-90 to 90)"
+                    },
+                    "lon_range": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "[min_lon, max_lon] in degrees (-180 to 180 or 0 to 360)"
+                    }
+                },
+                "required": ["variable"]
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_arraylake_summary_statistics",
+            "description": "Get summary statistics (min, max, mean, std) for SPEAR data on ArrayLake without returning full arrays.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "variable": {
+                        "type": "string",
+                        "description": "Variable name (e.g. 'tas', 'pr')"
+                    },
+                    "group": {
+                        "type": "string",
+                        "description": "Experiment + frequency path (e.g. 'historical/Amon')"
+                    },
+                    "member_id": {
+                        "description": "Ensemble member(s): integer 1-30 or string like 'r1i1p1f1'",
+                        "oneOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                            {"type": "array", "items": {"oneOf": [{"type": "integer"}, {"type": "string"}]}}
+                        ]
+                    },
+                    "start_date": {"type": "string", "description": "Start date"},
+                    "end_date": {"type": "string", "description": "End date"},
+                    "lat_range": {"type": "array", "items": {"type": "number"}, "description": "[min_lat, max_lat]"},
+                    "lon_range": {"type": "array", "items": {"type": "number"}, "description": "[min_lon, max_lon]"}
+                },
+                "required": ["variable"]
+            },
+        },
+    },
+]
+
+# Compose the active tool list based on environment configuration
+OLLAMA_TOOLS = []
+if ENABLE_NETCDF_TOOLS:
+    OLLAMA_TOOLS += NETCDF_OLLAMA_TOOLS  # Includes create_plot
+if ENABLE_ARRAYLAKE_TOOLS:
+    if ENABLE_NETCDF_TOOLS:
+        OLLAMA_TOOLS += ARRAYLAKE_OLLAMA_TOOLS[1:]  # Skip create_plot duplicate
+    else:
+        OLLAMA_TOOLS += ARRAYLAKE_OLLAMA_TOOLS  # Includes create_plot
+if not OLLAMA_TOOLS:
+    # Nothing enabled — fall back to ArrayLake
+    OLLAMA_TOOLS = ARRAYLAKE_OLLAMA_TOOLS
