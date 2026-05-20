@@ -30,8 +30,8 @@ render_sidebar_profile(page_key="mcp")
 st.title("MCP Server Tools")
 st.markdown(
     "Browse the tools available on the **SPEAR MCP server**. "
-    "These tools are used by the LLM assistant to navigate SPEAR output on AWS "
-    "and explore NetCDF/Zarr datasets."
+    "These tools are used by the LLM assistant to access SPEAR output via "
+    "ArrayLake (Zarr v3), S3 navigation, and optionally NetCDF datasets."
 )
 
 # ── Server health ────────────────────────────────────────────────────────────
@@ -60,15 +60,23 @@ st.divider()
 # Group tools by category based on naming conventions
 CATEGORY_MAP = {
     "SPEAR Navigation": ["validate_spear_url", "browse_spear_directory", "navigate_spear_path", "search_spear_variables"],
-    "CMIP6 Zarr": ["test_cmip6_connection", "get_zarr_store_info", "load_zarr_dataset", "query_zarr_data", "get_zarr_summary_statistics"],
+    "ArrayLake (SPEAR Zarr)": ["test_arraylake_connection", "browse_arraylake_repo", "get_arraylake_store_info", "query_arraylake_data", "get_arraylake_summary_statistics"],
+    "CMIP6 Zarr (Legacy)": ["test_cmip6_connection", "get_zarr_store_info", "load_zarr_dataset", "query_zarr_data", "get_zarr_summary_statistics"],
 }
 
 def get_category(tool_name: str) -> str:
     for cat, names in CATEGORY_MAP.items():
         if tool_name in names:
             return cat
-    # Fallback: anything else is a NetCDF / SPEAR data tool
-    return "SPEAR NetCDF Data"
+    # Fallback: anything with "netcdf" or "nc" is NetCDF, otherwise uncategorized
+    if "netcdf" in tool_name.lower() or "s3_file" in tool_name or tool_name in (
+        "make_json_serializable", "convert_cftime_to_string", "test_spear_connection",
+        "get_file_info_and_validation", "validate_query_parameters", "estimate_response_size",
+        "calculate_chunk_size", "load_dataset_if_needed", "query_netcdf_data",
+        "get_data_summary_statistics", "get_s3_file_metadata_only",
+    ):
+        return "SPEAR NetCDF Data"
+    return "Other"
 
 # Build grouped dict preserving order
 from collections import OrderedDict
@@ -78,13 +86,13 @@ for tool in tools:
     grouped.setdefault(cat, []).append(tool)
 
 # Preferred display order
-display_order = ["SPEAR Navigation", "SPEAR NetCDF Data", "CMIP6 Zarr"]
+display_order = ["SPEAR Navigation", "ArrayLake (SPEAR Zarr)", "SPEAR NetCDF Data", "CMIP6 Zarr (Legacy)"]
 for cat in display_order:
     if cat not in grouped:
         continue
     st.subheader(cat)
-    if cat == "CMIP6 Zarr":
-        st.warning("These tools are for temporary Zarr experimentation only.")
+    if cat == "CMIP6 Zarr (Legacy)":
+        st.warning("Legacy tools — replaced by ArrayLake integration.")
     for tool in grouped[cat]:
         with st.expander(f"`{tool['name']}`"):
             st.markdown(tool.get("description") or "*No description provided.*")

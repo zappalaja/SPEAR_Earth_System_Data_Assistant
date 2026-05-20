@@ -6,6 +6,9 @@ from datetime import datetime
 from plotting_tool import plot_climate_data
 from response_size_estimator import is_query_too_large, suggest_alternatives, format_size_warning
 
+ENABLE_NETCDF_TOOLS = os.environ.get("ENABLE_NETCDF_TOOLS", "false").lower() in ("true", "1", "yes")
+ENABLE_ARRAYLAKE_TOOLS = os.environ.get("ENABLE_ARRAYLAKE_TOOLS", "true").lower() in ("true", "1", "yes")
+
 # MCP Client imports
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
@@ -48,10 +51,10 @@ def cache_result(tool_name: str, tool_input: dict, result: dict):
     print(f"[CACHE STORE] Cached result for {tool_name} (cache size: {len(cache)})")
 
 def get_last_query_data() -> dict:
-    """Get the most recent query_netcdf_data result for plotting."""
+    """Get the most recent query data result for plotting."""
     cache = _get_cache()
     for key in reversed(list(cache.keys())):
-        if key.startswith("query_netcdf_data:"):
+        if key.startswith("query_arraylake_data:") or key.startswith("query_netcdf_data:"):
             return cache[key]
     return None
 
@@ -75,14 +78,7 @@ else:
     )
 
 # Define available tools with their metadata
-AVAILABLE_TOOLS = [
-    {
-        "name": "create_plot",
-        "description": "Create and display a matplotlib plot",
-        "function": plot_climate_data
-    },
-    # All paths, variables, and file mappings are precomputed in spear_data_paths.py.
-    # The bot should use query_netcdf_data DIRECTLY without browsing or searching.
+NETCDF_TOOLS = [
     {
         "name": "get_s3_file_metadata_only",
         "description": "Get metadata of a SPEAR NetCDF file without loading data",
@@ -93,28 +89,50 @@ AVAILABLE_TOOLS = [
         "description": "Query NetCDF data with spatial/temporal subsetting",
         "mcp_tool": True
     },
-    # CMIP6 Zarr tools
-    {
-        "name": "test_cmip6_connection",
-        "description": "Test connection to CMIP6 Zarr store",
-        "mcp_tool": True
-    },
-    {
-        "name": "get_zarr_store_info",
-        "description": "Get metadata about the CMIP6 Zarr store",
-        "mcp_tool": True
-    },
-    {
-        "name": "query_zarr_data",
-        "description": "Query CMIP6 Zarr data with spatial/temporal subsetting",
-        "mcp_tool": True
-    },
-    {
-        "name": "get_zarr_summary_statistics",
-        "description": "Get summary statistics from CMIP6 Zarr data",
-        "mcp_tool": True
-    }
 ]
+
+ARRAYLAKE_TOOLS = [
+    {
+        "name": "create_plot",
+        "description": "Create and display a matplotlib plot",
+        "function": plot_climate_data
+    },
+    {
+        "name": "test_arraylake_connection",
+        "description": "Test connection to SPEAR ArrayLake repository",
+        "mcp_tool": True
+    },
+    {
+        "name": "browse_arraylake_repo",
+        "description": "Browse Zarr hierarchy in SPEAR ArrayLake repo",
+        "mcp_tool": True
+    },
+    {
+        "name": "get_arraylake_store_info",
+        "description": "Get metadata from SPEAR Zarr group on ArrayLake",
+        "mcp_tool": True
+    },
+    {
+        "name": "query_arraylake_data",
+        "description": "Query SPEAR Zarr data on ArrayLake with spatial/temporal/ensemble subsetting",
+        "mcp_tool": True
+    },
+    {
+        "name": "get_arraylake_summary_statistics",
+        "description": "Get summary statistics for SPEAR data on ArrayLake",
+        "mcp_tool": True
+    },
+]
+
+# Build AVAILABLE_TOOLS based on which backends are enabled
+AVAILABLE_TOOLS = []
+if ENABLE_NETCDF_TOOLS:
+    AVAILABLE_TOOLS += NETCDF_TOOLS
+if ENABLE_ARRAYLAKE_TOOLS:
+    AVAILABLE_TOOLS += ARRAYLAKE_TOOLS
+elif not ENABLE_NETCDF_TOOLS:
+    # Nothing enabled — fall back to ArrayLake tools so create_plot is available
+    AVAILABLE_TOOLS = ARRAYLAKE_TOOLS
 
 
 # ============================================================================
@@ -323,9 +341,9 @@ def check_query_size_before_execution(tool_input):
     return None
 
 
-def preprocess_query_parameters(tool_input):
+def preprocess_query_parameters(tool_input, tool_name="query_netcdf_data"):
     """
-    Preprocess query_netcdf_data parameters to fix common issues:
+    Preprocess query parameters to fix common issues:
     1. Convert negative longitudes (-180 to 180) to 0-360 format
     2. Ensure lat/lon ranges are in correct order [min, max]
     3. Set sensible defaults for missing parameters
@@ -369,23 +387,30 @@ def preprocess_query_parameters(tool_input):
     # ========================================================================
     # SET DEFAULTS for commonly missing parameters
     # ========================================================================
-    if not processed.get("ensemble_member"):
-        processed["ensemble_member"] = "r1i1p1f1"
-        print(f"[PREPROCESS] Set default ensemble_member: r1i1p1f1")
+    if tool_name == "query_arraylake_data":
+        # ArrayLake defaults
+        if not processed.get("group"):
+            processed["group"] = "historical/Amon"
+            print(f"[PREPROCESS] Set default group: historical/Amon")
+    else:
+        # NetCDF defaults
+        if not processed.get("ensemble_member"):
+            processed["ensemble_member"] = "r1i1p1f1"
+            print(f"[PREPROCESS] Set default ensemble_member: r1i1p1f1")
+
+        if not processed.get("grid"):
+            processed["grid"] = "gr3"
+
+        if not processed.get("version"):
+            processed["version"] = "v20210201"
+
+        if not processed.get("scenario"):
+            processed["scenario"] = "historical"
+            print(f"[PREPROCESS] Set default scenario: historical")
 
     if not processed.get("frequency"):
         processed["frequency"] = "Amon"
         print(f"[PREPROCESS] Set default frequency: Amon")
-
-    if not processed.get("grid"):
-        processed["grid"] = "gr3"
-
-    if not processed.get("version"):
-        processed["version"] = "v20210201"
-
-    if not processed.get("scenario"):
-        processed["scenario"] = "historical"
-        print(f"[PREPROCESS] Set default scenario: historical")
 
     return processed
 
@@ -440,9 +465,9 @@ async def call_mcp_server_http(tool_name, tool_input):
                 # Calculate response size
                 response_bytes = len(raw_content.encode('utf-8')) if raw_content else 0
 
-                # Calculate data points if this is query_netcdf_data
+                # Calculate data points if this is a query tool
                 data_points = 0
-                if tool_name == "query_netcdf_data" and isinstance(data, dict):
+                if tool_name in ("query_netcdf_data", "query_arraylake_data") and isinstance(data, dict):
                     data_info = data.get("data_info", {})
                     shape = data_info.get("shape", [])
                     if shape:
@@ -516,9 +541,9 @@ async def call_mcp_server_stdio(tool_name, tool_input):
                 # Calculate response size
                 response_bytes = len(raw_content.encode('utf-8')) if raw_content else 0
 
-                # Calculate data points if this is query_netcdf_data
+                # Calculate data points if this is a query tool
                 data_points = 0
-                if tool_name == "query_netcdf_data" and isinstance(data, dict):
+                if tool_name in ("query_netcdf_data", "query_arraylake_data") and isinstance(data, dict):
                     data_info = data.get("data_info", {})
                     shape = data_info.get("shape", [])
                     if shape:
@@ -575,9 +600,9 @@ async def query_mcp_tool_async(tool_name, tool_input):
 
         # Check if this is an MCP tool
         if tool_config.get("mcp_tool", False):
-            # Preprocess query_netcdf_data to fix common issues
-            if tool_name == "query_netcdf_data":
-                tool_input = preprocess_query_parameters(tool_input)
+            # Preprocess query parameters to fix common issues
+            if tool_name in ("query_netcdf_data", "query_arraylake_data"):
+                tool_input = preprocess_query_parameters(tool_input, tool_name=tool_name)
 
                 # Check cache FIRST before making MCP call
                 cached = get_cached_result(tool_name, tool_input)
@@ -592,8 +617,8 @@ async def query_mcp_tool_async(tool_name, tool_input):
             # Call MCP server
             result = await call_mcp_server(tool_name, tool_input)
 
-            # Cache successful query_netcdf_data results
-            if tool_name == "query_netcdf_data" and result.get("status") == "ok":
+            # Cache successful query results
+            if tool_name in ("query_netcdf_data", "query_arraylake_data") and result.get("status") == "ok":
                 cache_result(tool_name, tool_input, result)
 
             return result
@@ -609,8 +634,8 @@ async def query_mcp_tool_async(tool_name, tool_input):
         # ========================================================================
         # RESPONSE SIZE CHECKING (BEFORE TOOL EXECUTION)
         # ========================================================================
-        # For query_netcdf_data, check if response would be too large
-        if tool_name == "query_netcdf_data":
+        # For query tools, check if response would be too large
+        if tool_name in ("query_netcdf_data", "query_arraylake_data"):
             print(f"[SIZE CHECK] Checking query size for: {tool_input}")  # DEBUG
             size_check_result = check_query_size_before_execution(tool_input)
             if size_check_result is not None:
