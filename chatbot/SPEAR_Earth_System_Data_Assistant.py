@@ -36,6 +36,7 @@ from ai_config import (
     MAX_TOKENS,
     TEMPERATURE,
     SYSTEM_PROMPT,
+    CODE_MODE_SYSTEM_PROMPT,
     CHAT_TITLE,
     CHAT_INPUT_PLACEHOLDER,
     WELCOME_MESSAGE,
@@ -306,6 +307,11 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
+# Code Mode: when enabled, the assistant returns ready-to-run data-access code
+# instead of fetching data / rendering plots itself (no tool execution).
+if "code_mode" not in st.session_state:
+    st.session_state.code_mode = os.getenv("CODE_MODE", "false").lower() in ("true", "1", "yes")
+
 # Initialize data cache for storing query results across messages
 if "query_data_cache" not in st.session_state:
     st.session_state.query_data_cache = {}
@@ -409,6 +415,22 @@ with st.sidebar:
             st.rerun()
     # if msg_count > 20:
     #     st.warning("⚠️ Long conversation history may cause rate limits")
+
+    st.divider()
+
+    # =========================================================================
+    # Mode
+    # =========================================================================
+    st.header("Mode")
+    st.session_state.code_mode = st.toggle(
+        "💻 Code Mode",
+        value=st.session_state.code_mode,
+        key="code_mode_toggle",
+        help="Return ready-to-run Python code (with the data path and bounds filled in) "
+             "so you access the data yourself. The assistant won't fetch data or render plots.",
+    )
+    if st.session_state.code_mode:
+        st.caption("✅ Code Mode on — replies are code only.")
 
     # =========================================================================
     # AI Model Selector
@@ -1162,7 +1184,7 @@ def _ollama_native_stream(payload: dict):
                 raise RuntimeError(data["error"])
             message = data.get("message", {})
             if message:
-                # Preserve tool_calls across chunks (important for qwen2.5:7b)
+                # Preserve tool_calls across chunks
                 if message.get("tool_calls"):
                     final_message["tool_calls"] = message["tool_calls"]
                 if message.get("content") is not None:
@@ -1353,12 +1375,19 @@ if prompt := st.chat_input(
             current_model = st.session_state.selected_model
             provider = get_provider(provider_type)
 
+            # Code Mode: emit data-access code instead of executing tools.
+            # Swap in the code-generation prompt and disable tools so no tool
+            # calls fire (the Phase 2 execution loop is then naturally skipped).
+            code_mode = st.session_state.get("code_mode", False)
+            active_base_prompt = CODE_MODE_SYSTEM_PROMPT if code_mode else SYSTEM_PROMPT
+            active_tools = [] if code_mode else OLLAMA_TOOLS
+
             # Build the enhanced system prompt (with context)
             context_summary = build_conversation_context(st.session_state.messages)
             recent_summary = build_recent_conversation_summary(st.session_state.messages)
-            enhanced_system = SYSTEM_PROMPT
+            enhanced_system = active_base_prompt
             if context_summary:
-                enhanced_system = SYSTEM_PROMPT + context_summary
+                enhanced_system = active_base_prompt + context_summary
             if recent_summary:
                 enhanced_system = enhanced_system + recent_summary
 
@@ -1373,7 +1402,7 @@ if prompt := st.chat_input(
             final_msg = {}
             for chunk, msg in provider.chat_stream(
                 messages=st.session_state.messages,
-                tools=OLLAMA_TOOLS,
+                tools=active_tools,
                 model=current_model,
                 system_prompt=enhanced_system,
                 temperature=TEMPERATURE,
@@ -1411,7 +1440,7 @@ if prompt := st.chat_input(
                 final_msg = {}
                 for chunk, msg in provider.chat_stream(
                     messages=st.session_state.messages,
-                    tools=OLLAMA_TOOLS,
+                    tools=active_tools,
                     model=current_model,
                     system_prompt=enhanced_system,
                     temperature=TEMPERATURE,
@@ -1437,7 +1466,7 @@ if prompt := st.chat_input(
                 st.session_state.processing = False
                 st.stop()  # Stop execution here - don't save anything
 
-            # Handle case where model returns empty content with tool calls (e.g., qwen2.5:7b)
+            # Handle case where model returns empty content with tool calls
             if tool_calls and not full_resp.strip():
                 full_resp = "_Accessing SPEAR climate data..._\n\n"
                 msg_placeholder.markdown(full_resp)
@@ -1634,7 +1663,7 @@ if prompt := st.chat_input(
                     current_msg = {}
                     for chunk, msg in provider.chat_stream(
                         messages=st.session_state.messages,
-                        tools=OLLAMA_TOOLS,
+                        tools=active_tools,
                         model=current_model,
                         system_prompt=enhanced_system,
                         temperature=TEMPERATURE,

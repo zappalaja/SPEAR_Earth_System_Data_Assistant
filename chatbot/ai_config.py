@@ -14,14 +14,12 @@ ENABLE_ARRAYLAKE_TOOLS = os.environ.get("ENABLE_ARRAYLAKE_TOOLS", "true").lower(
 DEFAULT_PROVIDER = "gemini"  # 'claude' or 'gemini' (Ollama disabled for container deployment)
 
 # Ollama Model Configuration (disabled for container deployment)
-# MODEL_NAME = "qwen2.5:32b-instruct-q8_0"
-# DEFAULT_OLLAMA_MODEL = MODEL_NAME
 MODEL_NAME = None  # Ollama disabled
 DEFAULT_OLLAMA_MODEL = None  # Ollama disabled
 
 # Claude Model Configuration
-CLAUDE_MODELS = ["claude-opus-4-5", "claude-sonnet-4", "claude-haiku"]
-DEFAULT_CLAUDE_MODEL = "claude-sonnet-4"  # Default model for Claude provider
+CLAUDE_MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"  # Default model for Claude provider
 
 # Gemini Model Configuration
 # Note: Gemini 1.5 models are retired. Gemini 2.0 retiring March 2026.
@@ -288,6 +286,9 @@ User: "get historical member 8 6hr precipitation data"
 - DO NOT try to relate non-climate questions back to SPEAR or climate data
 - DO NOT over-explain or ask for clarification when the answer is obvious
 - BE CONCISE - short answers are better than long ones for simple questions
+- ONLY provide information that was directly requested. Do not add context, caveats, suggestions, or elaboration unless explicitly asked.
+- Omit preamble, filler phrases, and summaries. Get straight to the answer.
+- Do NOT volunteer additional information beyond what was asked. If more detail could be useful, end with a single short question asking if the user wants more info.
 
 **EXAMPLES OF IDEAL RESPONSES:**
 - User: "hello" → "Hello! How can I help you today?"
@@ -706,6 +707,9 @@ User: "get historical member 8 monthly precipitation data"
 - DO NOT try to relate non-climate questions back to SPEAR or climate data
 - DO NOT over-explain or ask for clarification when the answer is obvious
 - BE CONCISE - short answers are better than long ones for simple questions
+- ONLY provide information that was directly requested. Do not add context, caveats, suggestions, or elaboration unless explicitly asked.
+- Omit preamble, filler phrases, and summaries. Get straight to the answer.
+- Do NOT volunteer additional information beyond what was asked. If more detail could be useful, end with a single short question asking if the user wants more info.
 
 **EXAMPLES OF IDEAL RESPONSES:**
 - User: "hello" → "Hello! How can I help you today?"
@@ -901,6 +905,105 @@ else:
     # Neither enabled — fall back to ArrayLake prompt (tools just won't be registered)
     SYSTEM_PROMPT = ARRAYLAKE_SYSTEM_PROMPT
 # SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + build_knowledge_base_prompt()  # Disabled for now
+
+# ============================================================================
+# CODE MODE SYSTEM PROMPT
+# ----------------------------------------------------------------------------
+# In Code Mode the assistant does NOT call any tools and does NOT fetch or
+# compute data itself. It returns ready-to-run Python code with the data path
+# and the requested bounds written in, so the user runs it themselves. The
+# data-access template tracks the active backend (ArrayLake vs public S3
+# NetCDF), exactly like SYSTEM_PROMPT above.
+# ============================================================================
+
+CODE_MODE_INSTRUCTIONS = """You are a SPEAR climate-data assistant operating in **CODE MODE**.
+
+In Code Mode you do NOT fetch, download, compute, or summarize data. You write
+ready-to-run Python code that the *user* runs themselves to access the data.
+
+**OUTPUT RULES:**
+- Respond with ONE short sentence, then a SINGLE ```python code block. Nothing else.
+- Fill in CONCRETE values from the user's request: variable, experiment, frequency,
+  ensemble member, date range, and lat/lon bounds. Do NOT leave placeholders unless
+  the user genuinely did not specify a value (then use a clearly-named variable at the top).
+- If the user asks for a plot, include matplotlib code that loads THEN plots the data.
+- Keep it minimal and runnable. No extra prose, caveats, confidence assessments, or summaries.
+- Never claim you ran the code or describe results — you are only providing the code.
+
+**SPEAR CONVENTIONS (use to fill in the code):**
+- Variables (CMIP names): tas (2m air temp, K), pr (precipitation flux, kg m-2 s-1),
+  uas/vas (10m winds, m/s), psl (sea-level pressure, Pa), tos/sos (ocean), huss, rlut, etc.
+- Unit conversions: temperature K->degC via `- 273.15`; precip flux->mm/day via `* 86400`.
+- Experiments: `historical` (1921-2014), `scenarioSSP5-85` (2015-2100). If the user gives a
+  year but no scenario, pick by year (<=2014 historical, else scenarioSSP5-85).
+- Frequencies / groups: `Amon` (monthly atmosphere), `day` (daily), `6hr` (6-hourly),
+  `Omon` (monthly ocean), `fx`/`Ofx` (fixed fields).
+- Ensemble members: `r1i1p1f1` ... `r30i1p1f1` (30 members). Member N -> f"r{N}i1p1f1".
+- Grid label: `gr3`. SPEAR longitude is 0-360 (convert negative/Western lons by `+ 360`).
+- Resolve city/region names to numeric [lat_min, lat_max] and [lon_min, lon_max] bounds yourself.
+"""
+
+CODE_MODE_ARRAYLAKE_ACCESS = """
+**DATA ACCESS — ArrayLake (Zarr v3).** Requires the user to have an ARRAYLAKE_TOKEN
+set, or to have run `arraylake auth login`. Use this template:
+
+```python
+from arraylake import Client
+import xarray as xr
+
+repo = Client().get_repo("GFDL/noaa-gfdl-spear-large-ensembles-pds")
+session = repo.readonly_session(branch="main")
+# group = "<experiment>/<frequency>", e.g. "historical/Amon"
+ds = xr.open_zarr(session.store, group="historical/Amon", consolidated=False)
+
+da = ds["tas"].sel(member_id="r1i1p1f1")          # pick variable + member
+da = da.sel(time=slice("1990-01", "2014-12"))     # date bounds
+da = da.sel(lat=slice(20, 50), lon=slice(230, 300))  # lon is 0-360
+data = da.values  # triggers the download
+```
+"""
+
+CODE_MODE_NETCDF_ACCESS = """
+**DATA ACCESS — public S3 NetCDF (no credentials needed).** The bucket is public,
+so use anonymous access. Directory and filename layout:
+- dir:  noaa-gfdl-spear-large-ensembles-pds/SPEAR/GFDL-LARGE-ENSEMBLES/CMIP/NOAA-GFDL/GFDL-SPEAR-MED/<experiment>/<member>/<frequency>/<variable>/gr3/<version>
+- file: <variable>_<frequency>_GFDL-SPEAR-MED_<experiment>_<member>_gr3_<start>-<end>.nc
+        (date format: Amon/Omon -> YYYYMM, day/6hr -> YYYYMMDD; e.g. 192101-201412)
+
+```python
+import xarray as xr
+import s3fs
+
+fs = s3fs.S3FileSystem(anon=True)
+path = (
+    "noaa-gfdl-spear-large-ensembles-pds/SPEAR/GFDL-LARGE-ENSEMBLES/CMIP/"
+    "NOAA-GFDL/GFDL-SPEAR-MED/historical/r1i1p1f1/Amon/tas/gr3/v20210201/"
+    "tas_Amon_GFDL-SPEAR-MED_historical_r1i1p1f1_gr3_192101-201412.nc"
+)
+ds = xr.open_dataset(fs.open(path))
+
+da = ds["tas"].sel(time=slice("1990-01", "2014-12"))
+da = da.sel(lat=slice(20, 50), lon=slice(230, 300))  # lon is 0-360
+data = da.values
+```
+"""
+
+CODE_MODE_PLOT_GUIDANCE = """
+**PLOTTING (only when the user asks for a plot).** After the access code above,
+add matplotlib code that operates on the loaded `da`/`ds`. Apply unit conversions
+(e.g. `- 273.15`, `* 86400`) before plotting. For a time series, reduce spatial dims
+with `.mean(dim=["lat", "lon"])`; for a map, select a single time. Label axes and units.
+"""
+
+if ENABLE_NETCDF_TOOLS and not ENABLE_ARRAYLAKE_TOOLS:
+    CODE_MODE_SYSTEM_PROMPT = (
+        CODE_MODE_INSTRUCTIONS + CODE_MODE_NETCDF_ACCESS + CODE_MODE_PLOT_GUIDANCE
+    )
+else:
+    # ArrayLake is the default/primary backend (matches SYSTEM_PROMPT selection above)
+    CODE_MODE_SYSTEM_PROMPT = (
+        CODE_MODE_INSTRUCTIONS + CODE_MODE_ARRAYLAKE_ACCESS + CODE_MODE_PLOT_GUIDANCE
+    )
 
 # Chat Interface Settings
 CHAT_TITLE = "SPEAR Earth System Data Assistant"
