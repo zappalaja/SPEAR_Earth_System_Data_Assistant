@@ -1,0 +1,10 @@
+# Secrets — never commit
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local runtime config and logs
+chatbot.conf
+chatbot/chat_logs/
