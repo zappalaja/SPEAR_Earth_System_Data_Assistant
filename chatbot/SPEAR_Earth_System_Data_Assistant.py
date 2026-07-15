@@ -130,8 +130,9 @@ if os.path.isdir(_bg_dir):
                 background-repeat: no-repeat !important;
                 background-attachment: fixed !important;
             }}
-            /* Black text in main area */
-            .stApp * {{
+            /* Black text in main area — except inside fenced code blocks,
+               where the syntax highlighter's inline span colors must win */
+            .stApp *:not([data-testid="stCode"] pre *) {{
                 color: black !important;
             }}
             /* Download button — white text on colored background */
@@ -164,8 +165,10 @@ if os.path.isdir(_bg_dir):
                 background-color: rgba(255, 220, 0, 0.35) !important;
                 border-color: rgba(200, 160, 0, 0.9) !important;
             }}
-            /* Inline code (tool names in backticks) — yellow highlight */
-            .stApp code {{
+            /* Inline code (tool names in backticks) — yellow highlight.
+               Fenced blocks (pre > code) are excluded so they keep the
+               syntax highlighter's own colors */
+            .stApp code:not(pre code) {{
                 background-color: rgba(255, 220, 0, 0.45) !important;
                 color: black !important;
                 border-radius: 3px !important;
@@ -207,6 +210,17 @@ if os.path.isdir(_bg_dir):
             [data-testid="stBottom"] button svg {{
                 fill: white !important;
                 stroke: white !important;
+            }}
+            /* Disabled send button (chat locked until a mode is picked) —
+               Streamlit gives it a solid light chip; keep it transparent
+               with a dimmed arrow instead */
+            [data-testid="stChatInputSubmitButton"]:disabled {{
+                background: transparent !important;
+                border: none !important;
+            }}
+            [data-testid="stChatInputSubmitButton"]:disabled svg {{
+                fill: rgba(255, 255, 255, 0.4) !important;
+                stroke: none !important;
             }}
             /* ── Standalone expanders (outside chat bubbles) — light background ── */
             [data-testid="stMain"] [data-testid="stExpander"] details {{
