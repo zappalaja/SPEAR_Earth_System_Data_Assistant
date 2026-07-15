@@ -131,8 +131,10 @@ if os.path.isdir(_bg_dir):
                 background-attachment: fixed !important;
             }}
             /* Black text in main area — except inside fenced code blocks,
-               where the syntax highlighter's inline span colors must win */
-            .stApp *:not([data-testid="stCode"] pre *) {{
+               where the syntax highlighter's inline span colors must win.
+               :where() keeps specificity at .stApp * level so the later
+               sidebar/chat-input white rules still override via cascade */
+            .stApp *:not(:where([data-testid="stCode"] pre *)) {{
                 color: black !important;
             }}
             /* Download button — white text on colored background */
