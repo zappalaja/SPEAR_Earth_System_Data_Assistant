@@ -298,6 +298,12 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.4) !important;
         border-radius: 6px !important;
     }
+    /* The icon svg strokes with currentColor but gets color: black set
+       directly on it — force white at the svg level too */
+    [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"] svg {
+        color: #ffffff !important;
+        stroke: #ffffff !important;
+    }
     [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"]:hover,
     [data-testid="stChatMessage"] [data-testid="stCode"] button:hover,
     [data-testid="stChatMessage"] [data-testid="stCodeBlock"] button:hover {
