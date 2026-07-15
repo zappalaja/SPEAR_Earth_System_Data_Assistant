@@ -578,10 +578,10 @@ with st.sidebar:
     else:
         # Gemini API selected
         if GOOGLE_AVAILABLE:
-            st.caption("✅ google-generativeai package installed")
+            st.caption("✅ google-genai package installed")
         else:
-            st.error("❌ google-generativeai package not installed")
-            st.caption("Run: pip install google-generativeai")
+            st.error("❌ google-genai package not installed")
+            st.caption("Run: pip install google-genai")
 
     # MCP Server connection check
     st.header("SPEAR MCP Server")

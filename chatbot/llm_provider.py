@@ -4,7 +4,10 @@ Provides a unified interface for Ollama and Claude API models.
 """
 
 import os
+import re
 import json
+import time
+import base64
 import requests
 from abc import ABC, abstractmethod
 from typing import Generator, Any
@@ -16,9 +19,9 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-# Check if google-generativeai is available
+# Check if google-genai is available (successor to the deprecated google-generativeai)
 try:
-    import google.generativeai as genai
+    from google import genai
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -513,11 +516,10 @@ class GeminiProvider(LLMProvider):
         """Lazy-initialize the Gemini client."""
         if self._client is None:
             if not GOOGLE_AVAILABLE:
-                raise RuntimeError("google-generativeai package is not installed. Run: pip install google-generativeai")
+                raise RuntimeError("google-genai package is not installed. Run: pip install google-genai")
             if not self.api_key:
                 raise RuntimeError("GEMINI_API_KEY environment variable is not set")
-            genai.configure(api_key=self.api_key)
-            self._client = genai
+            self._client = genai.Client(api_key=self.api_key)
         return self._client
 
     def chat_stream(
@@ -540,112 +542,96 @@ class GeminiProvider(LLMProvider):
         # Convert tools to Gemini format
         gemini_tools = self.format_tools(tools)
 
-        # Create the model with system instruction
-        generation_config = {
+        # google-genai accepts a plain dict for GenerateContentConfig
+        config = {
+            "system_instruction": system_prompt,
             "temperature": temperature,
             "max_output_tokens": max_tokens,
         }
+        if gemini_tools:
+            config["tools"] = gemini_tools
 
-        model_instance = self.client.GenerativeModel(
-            model_name=api_model,
-            system_instruction=system_prompt,
-            generation_config=generation_config,
-            tools=gemini_tools if gemini_tools else None,
-        )
+        # The API rejects empty contents; full history (including trailing
+        # function_response parts) can be passed directly — no chat session needed
+        if not gemini_contents:
+            gemini_contents = [{"role": "user", "parts": [{"text": " "}]}]
 
-        # Start chat and stream response
-        # Gemini requires us to send messages, so we need to handle the history carefully
         content_buffer = ""
         final_message = {"role": "assistant", "content": "", "tool_calls": []}
 
-        # Determine what to send based on the last message type
-        if not gemini_contents:
-            # No messages, send empty
-            history = []
-            last_message = " "  # Gemini requires non-empty content
-        else:
-            last_content = gemini_contents[-1]
-            last_parts = last_content.get("parts", [])
+        def collect_function_calls(candidates):
+            if not candidates:
+                return
+            content = candidates[0].content
+            for part in (content.parts or []) if content else []:
+                fc = getattr(part, "function_call", None)
+                if fc:
+                    args = self._convert_args_to_dict(fc.args) if fc.args else {}
+                    tool_call = {
+                        "id": f"call_{fc.name}_{len(final_message['tool_calls'])}",
+                        "name": fc.name,
+                        "arguments": args,
+                    }
+                    # Gemini 3 requires thought_signature to be echoed back when
+                    # this call is replayed in history; base64 keeps it JSON-safe
+                    sig = getattr(part, "thought_signature", None)
+                    if sig:
+                        tool_call["thought_signature"] = base64.b64encode(sig).decode("ascii")
+                    final_message["tool_calls"].append(tool_call)
 
-            # Check if the last message contains function_response (tool result)
-            has_function_response = any(
-                isinstance(p, dict) and "function_response" in p
-                for p in last_parts
-            )
-
-            if has_function_response:
-                # Last message is a tool result - include all messages in history
-                # and send a prompt asking to continue
-                history = gemini_contents
-                last_message = "Please analyze the tool result above and provide a response."
-            else:
-                # Last message is a regular user message
-                history = gemini_contents[:-1] if len(gemini_contents) > 1 else []
-                # Extract text from the last message
-                last_text = ""
-                for part in last_parts:
-                    if isinstance(part, dict) and "text" in part:
-                        last_text = part["text"]
-                        break
-                last_message = last_text if last_text else " "
-
-        chat = model_instance.start_chat(history=history)
-
+        max_rate_limit_retries = 3
         try:
-            # Try streaming first
-            response = chat.send_message(last_message, stream=True)
-
-            for chunk in response:
-                # Handle text content - check if text exists and is not empty
+            # Try streaming first; retry on rate limits (429) with the delay the API suggests
+            for attempt in range(max_rate_limit_retries + 1):
                 try:
-                    if hasattr(chunk, 'text') and chunk.text:
-                        content_buffer += chunk.text
-                        yield chunk.text, None
-                except ValueError:
-                    # chunk.text raises ValueError when the response contains function calls
-                    # This is expected behavior - continue to process function calls below
-                    pass
+                    stream = self.client.models.generate_content_stream(
+                        model=api_model,
+                        contents=gemini_contents,
+                        config=config,
+                    )
 
-            # Get final response for tool calls after streaming completes
-            # Check if there are function calls in the response
-            if hasattr(response, '_result') and response._result.candidates:
-                candidate = response._result.candidates[0]
-                if hasattr(candidate, 'content') and candidate.content.parts:
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'function_call') and part.function_call:
-                            fc = part.function_call
-                            # Convert protobuf MapComposite to plain dict via JSON serialization
-                            args = self._convert_args_to_dict(fc.args) if fc.args else {}
-                            final_message["tool_calls"].append({
-                                "id": f"call_{fc.name}_{len(final_message['tool_calls'])}",
-                                "name": fc.name,
-                                "arguments": args,
-                            })
+                    for chunk in stream:
+                        # chunk.text is None (no exception) for function-call-only chunks
+                        if chunk.text:
+                            content_buffer += chunk.text
+                            yield chunk.text, None
+                        collect_function_calls(chunk.candidates)
 
-            final_message["content"] = content_buffer
+                    final_message["content"] = content_buffer
+                    break
+
+                except Exception as e:
+                    # Only retry if nothing was emitted yet, so a mid-stream
+                    # failure can't duplicate already-yielded content
+                    if (
+                        self._is_rate_limit_error(e)
+                        and attempt < max_rate_limit_retries
+                        and not content_buffer
+                        and not final_message["tool_calls"]
+                    ):
+                        time.sleep(self._rate_limit_delay(e, attempt))
+                        continue
+                    raise
 
         except Exception as e:
-            # If streaming fails, try non-streaming
+            if self._is_rate_limit_error(e):
+                # A second (non-streaming) call would just burn quota and fail the
+                # same way — surface a clean message instead
+                raise RuntimeError(
+                    f"Gemini API rate limit exceeded — still throttled after "
+                    f"{max_rate_limit_retries} retries. Please wait a moment and try again."
+                )
+            # If streaming fails for any other reason, try non-streaming
             try:
-                response = chat.send_message(last_message, stream=False)
-
-                # Process the response parts
-                if response.candidates and response.candidates[0].content.parts:
-                    for part in response.candidates[0].content.parts:
-                        # Check for text content
-                        if hasattr(part, 'text') and part.text:
-                            final_message["content"] = part.text
-                            yield part.text, None
-                        # Check for function calls
-                        elif hasattr(part, 'function_call') and part.function_call:
-                            fc = part.function_call
-                            # Convert protobuf MapComposite to plain dict via JSON serialization
-                            args = self._convert_args_to_dict(fc.args) if fc.args else {}
-                            final_message["tool_calls"].append({
-                                "id": f"call_{fc.name}_{len(final_message['tool_calls'])}",
-                                "name": fc.name,
-                                "arguments": args,
-                            })
+                response = self.client.models.generate_content(
+                    model=api_model,
+                    contents=gemini_contents,
+                    config=config,
+                )
+                if response.text:
+                    final_message["content"] = response.text
+                    yield response.text, None
+                collect_function_calls(response.candidates)
             except Exception as inner_e:
                 # Re-raise with more context
                 raise RuntimeError(f"Gemini API error: {str(e)}. Fallback also failed: {str(inner_e)}")
@@ -656,6 +642,28 @@ class GeminiProvider(LLMProvider):
 
         # Yield final message
         yield "", final_message
+
+    @staticmethod
+    def _is_rate_limit_error(e: Exception) -> bool:
+        """True if the exception is a Gemini 429 / quota-exhausted error."""
+        code = getattr(e, "code", None) or getattr(e, "status_code", None)
+        return code == 429 or "RESOURCE_EXHAUSTED" in str(e)
+
+    @staticmethod
+    def _rate_limit_delay(e: Exception, attempt: int) -> float:
+        """
+        Seconds to wait before retrying a rate-limited request.
+
+        Prefers the delay the API suggests ("Please retry in 175.19ms"),
+        clamped to [0.5s, 30s]; falls back to exponential backoff.
+        """
+        m = re.search(r"retry in ([0-9.]+)\s*(ms|s)\b", str(e), re.IGNORECASE)
+        if m:
+            delay = float(m.group(1))
+            if m.group(2).lower() == "ms":
+                delay /= 1000
+            return min(max(delay, 0.5), 30.0)
+        return min(2.0 ** attempt, 30.0)
 
     def _convert_messages(self, messages: list[dict]) -> list[dict]:
         """
@@ -699,12 +707,18 @@ class GeminiProvider(LLMProvider):
                 if tool_calls:
                     for tc in tool_calls:
                         # Add function call parts
-                        parts.append({
+                        fc_part = {
                             "function_call": {
                                 "name": tc.get("name"),
                                 "args": tc.get("arguments", {})
                             }
-                        })
+                        }
+                        # Gemini 3 rejects replayed function calls without their
+                        # original thought_signature (stored base64-encoded)
+                        sig = tc.get("thought_signature")
+                        if sig:
+                            fc_part["thought_signature"] = base64.b64decode(sig)
+                        parts.append(fc_part)
 
                 # Only add if there are parts
                 if parts:

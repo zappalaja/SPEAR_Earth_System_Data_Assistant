@@ -35,14 +35,14 @@ dependencies:
       - httpx>=0.27.2
       - mcp>=1.13.0
       - anthropic>=0.39.0
-      - google-generativeai>=0.8.0
+      - google-genai>=2.0
       - streamlit-authenticator>=0.3.0
       - PyYAML>=6.0
       - bcrypt>=4.0.0
 
       # ── MCP Server ────────────────────────────────────────────
       - aiofiles>=24.1.0
-      - arraylake>=0.30.0
+      - arraylake>=1.0.0
       - async-lru>=2.0.5
       - beautifulsoup4>=4.12.0
       - cartopy>=0.25.0
