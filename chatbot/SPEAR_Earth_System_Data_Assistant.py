@@ -274,20 +274,36 @@ st.markdown("""
         font-weight: 700 !important;
         font-size: 1.1rem !important;
     }
-    /* Copy button on LLM code blocks: white and always visible (default is
-       dim and only appears on hover). Scoped to chat messages so the
-       light-background Tool Results expander keeps its dark icon. */
+    /* Copy button on LLM code blocks: white icon on a dark chip, shown at all
+       times (default is dim and only appears on hover). Scoped to chat
+       messages so the Tool Results expander keeps its default icon.
+       Streamlit hides the button by fading its wrapper div to opacity 0 when
+       the block isn't hovered — force that wrapper visible. */
+    [data-testid="stChatMessage"] [data-testid="stCode"] div:has(> [data-testid="stCodeCopyButton"]) {
+        opacity: 1 !important;
+    }
     [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"],
     [data-testid="stChatMessage"] [data-testid="stCode"] button,
     [data-testid="stChatMessage"] [data-testid="stCodeBlock"] button {
         color: #ffffff !important;
-        opacity: 0.8 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        /* Streamlit parks the button at transform: scale(0) until the block
+           is hovered — undo it so the chip is visible at rest */
+        transform: none !important;
+        background: rgba(0, 0, 0, 0.55) !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+        border-radius: 6px !important;
     }
     [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"]:hover,
     [data-testid="stChatMessage"] [data-testid="stCode"] button:hover,
     [data-testid="stChatMessage"] [data-testid="stCodeBlock"] button:hover {
         color: #ffffff !important;
-        opacity: 1 !important;
+        background: rgba(0, 0, 0, 0.8) !important;
+        border-color: rgba(255, 255, 255, 0.7) !important;
     }
     </style>
 """, unsafe_allow_html=True)
