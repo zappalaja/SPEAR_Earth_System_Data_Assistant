@@ -133,5 +133,21 @@ def apply_background():
             font-weight: 700 !important;
             font-size: 1.1rem !important;
         }}
+        /* Copy button on LLM code blocks: white and always visible (default is
+           dim and only appears on hover). Scoped to chat messages so the
+           light-background Tool Results expander keeps its dark icon.
+           stCodeCopyButton is the 1.40 testid; stCodeBlock kept for older DOMs. */
+        [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"],
+        [data-testid="stChatMessage"] [data-testid="stCode"] button,
+        [data-testid="stChatMessage"] [data-testid="stCodeBlock"] button {{
+            color: #ffffff !important;
+            opacity: 0.8 !important;
+        }}
+        [data-testid="stChatMessage"] [data-testid="stCodeCopyButton"]:hover,
+        [data-testid="stChatMessage"] [data-testid="stCode"] button:hover,
+        [data-testid="stChatMessage"] [data-testid="stCodeBlock"] button:hover {{
+            color: #ffffff !important;
+            opacity: 1 !important;
+        }}
         </style>
     """, unsafe_allow_html=True)
