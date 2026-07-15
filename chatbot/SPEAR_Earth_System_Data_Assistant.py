@@ -312,6 +312,20 @@ if "processing" not in st.session_state:
 if "code_mode" not in st.session_state:
     st.session_state.code_mode = os.getenv("CODE_MODE", "false").lower() in ("true", "1", "yes")
 
+# Startup mode picker: shown at the top of a new (empty) conversation until the
+# user picks a mode. Restored conversations already have messages and skip it.
+if "mode_selected" not in st.session_state:
+    st.session_state.mode_selected = len(st.session_state.messages) > 0
+
+# Apply a mode chosen via the startup picker. Deferred to here (before the
+# sidebar toggle is instantiated) because Streamlit forbids writing a widget's
+# session-state key after the widget exists in the same run.
+if "pending_mode_pick" in st.session_state:
+    _picked_code_mode = st.session_state.pop("pending_mode_pick")
+    st.session_state.code_mode = _picked_code_mode
+    st.session_state.code_mode_toggle = _picked_code_mode
+    st.session_state.mode_selected = True
+
 # Initialize data cache for storing query results across messages
 if "query_data_cache" not in st.session_state:
     st.session_state.query_data_cache = {}
@@ -398,6 +412,7 @@ with st.sidebar:
         st.session_state.processing = False
         st.session_state.query_data_cache = {}
         st.session_state.last_query_result = None
+        st.session_state.mode_selected = False
         st.rerun()
 
     # Show current message count
@@ -422,9 +437,12 @@ with st.sidebar:
     # Mode
     # =========================================================================
     st.header("Mode")
+    # Seed the widget state once; value= is omitted so the startup mode picker
+    # can also set code_mode_toggle without triggering Streamlit's warning
+    if "code_mode_toggle" not in st.session_state:
+        st.session_state.code_mode_toggle = st.session_state.code_mode
     st.session_state.code_mode = st.toggle(
         "💻 Code Mode",
-        value=st.session_state.code_mode,
         key="code_mode_toggle",
         help="Return ready-to-run Python code (with the data path and bounds filled in) "
              "so you access the data yourself. The assistant won't fetch data or render plots.",
@@ -1263,6 +1281,127 @@ def ollama_chat_stream(payload: dict):
 with st.chat_message("assistant", avatar=bot_avatar):
     st.markdown(WELCOME_MESSAGE)
 
+# ----------------------------------------------------------------------------
+# Startup mode picker — first prompt of a new conversation
+# ----------------------------------------------------------------------------
+MODE_PICKER_CSS = """
+<style>
+.st-key-mode_picker .stButton button {
+    height: 110px;
+    border-radius: 14px;
+    font-weight: 600;
+    background: rgba(255,255,255,.95);
+    border: 1px solid rgba(0,0,0,.2);
+}
+.st-key-mode_picker .stButton button:hover {
+    background: #ffffff;
+    border-color: rgba(0,0,0,.45);
+}
+.st-key-mode_picker .stButton button p {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: linear-gradient(100deg,
+        #1a1a1a 42%, #d4af37 47%, #ffe9a8 50%, #d4af37 53%, #1a1a1a 58%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: mode-text-shimmer 6s linear infinite;
+}
+/* Gradient canvas is 3x the button width with the gold band in its middle
+   third, so at both loop endpoints the band sits fully off the text — the
+   wrap-around is invisible (no end-of-cycle flash) */
+@keyframes mode-text-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: 0% 0; }
+}
+.mode-info-row { text-align: right; height: 20px; }
+.mode-info {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border: 1.5px solid rgba(128,128,128,.75);
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(128,128,128,.95);
+    cursor: help;
+    user-select: none;
+}
+.mode-info .mode-tooltip {
+    visibility: hidden; opacity: 0;
+    position: absolute;
+    bottom: 135%; right: -8px;
+    width: 270px;
+    background: #ffffff; color: #1a1a1a;
+    border: 1px solid rgba(0,0,0,.25);
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.8rem; font-weight: 400;
+    line-height: 1.4;
+    text-align: left;
+    z-index: 1000;
+    transition: opacity .15s ease-in-out;
+}
+.mode-info:hover .mode-tooltip { visibility: visible; opacity: 1; }
+</style>
+"""
+
+CODE_MODE_TIP = (
+    "You pull the data: replies are ready-to-run Python code — dataset paths, "
+    "bounds, and unit conversions filled in — that you execute in your own "
+    "environment. No data flows through the chatbot."
+)
+DATA_MODE_TIP = (
+    "The assistant pulls the data: it fetches SPEAR data with its tools and "
+    "answers with computed values and plots. Heads-up: AI-generated answers "
+    "can contain mistakes or hallucinations — double-check important numbers."
+)
+
+
+def _mode_info_circle(tip: str):
+    st.markdown(
+        f'<div class="mode-info-row"><span class="mode-info">i'
+        f'<span class="mode-tooltip">{tip}</span></span></div>',
+        unsafe_allow_html=True,
+    )
+
+
+if not st.session_state.mode_selected and not st.session_state.messages:
+    with st.chat_message("assistant", avatar=bot_avatar):
+        st.markdown("**Before we start — how would you like to work?**")
+        st.markdown(MODE_PICKER_CSS, unsafe_allow_html=True)
+        with st.container(key="mode_picker"):
+            pick_col1, pick_col2 = st.columns(2)
+            with pick_col1:
+                _mode_info_circle(CODE_MODE_TIP)
+                if st.button("Code Mode", key="pick_code_mode", use_container_width=True):
+                    st.session_state.pending_mode_pick = True
+                    st.rerun()
+            with pick_col2:
+                _mode_info_circle(DATA_MODE_TIP)
+                if st.button("Data Retrieval Mode", key="pick_data_mode", use_container_width=True):
+                    st.session_state.pending_mode_pick = False
+                    st.rerun()
+        st.caption(
+            "Hover the ⓘ for details. Pick a mode to unlock the chat — you can "
+            "switch anytime with the sidebar toggle."
+        )
+elif st.session_state.mode_selected and not st.session_state.messages:
+    if st.session_state.code_mode:
+        st.caption(
+            "💻 Code Mode selected — data requests get ready-to-run Python for you to execute."
+        )
+    else:
+        st.caption(
+            "📊 Data Retrieval Mode selected — I'll fetch the data for you. AI-generated "
+            "answers can contain mistakes or hallucinations, so double-check important numbers."
+        )
+
 # Add separator if there's chat history
 if len(st.session_state.messages) > 0:
     st.markdown("---")
@@ -1333,10 +1472,12 @@ for message in st.session_state.messages:
                 )
             _plot_download(message["_plot_png"], f"dl_plot_{id(message)}")
 
-# Handle user input - disabled while processing
+# Handle user input — disabled while processing, and locked until the user
+# picks a mode in the startup picker
+_awaiting_mode_pick = not st.session_state.mode_selected
 if prompt := st.chat_input(
-    CHAT_INPUT_PLACEHOLDER,
-    disabled=st.session_state.processing
+    "Select a mode above to start chatting..." if _awaiting_mode_pick else CHAT_INPUT_PLACEHOLDER,
+    disabled=st.session_state.processing or _awaiting_mode_pick
 ):
     # Set processing flag to disable input
     st.session_state.processing = True
