@@ -23,6 +23,7 @@ CONTAINER_NAME="spear-assistant"
 # Paths to mount
 CHROMA_DB="$PROJECT_DIR/rag-service/ingestion/chroma_db"
 MERGED_MD="$PROJECT_DIR/rag-service/ingestion/nougat_merged_md"
+CODE_SNIPPETS="$PROJECT_DIR/chatbot/code_snippets"
 ENV_FILE="$PROJECT_DIR/chatbot/.env"
 
 # Pull image if not available locally
@@ -43,6 +44,8 @@ RUN_ARGS=(
     --name "$CONTAINER_NAME"
     -v "$CHROMA_DB:/app/chroma_db:Z"
     -v "$MERGED_MD:/app/nougat_merged_md:Z"
+    # Snippets mounted from the repo: edit + POST /snippets/reindex, no rebuild
+    -v "$CODE_SNIPPETS:/app/chatbot/code_snippets:Z"
     -e "AUTH_ENABLED=true"
     -e "STREAMLIT_THEME_BASE=dark"
     -e "DEFAULT_MODEL=gemini-3-flash-preview"
