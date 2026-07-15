@@ -782,6 +782,32 @@ def retrieve_rag_context(query: str, k: int = 5) -> str:
         return ""
 
 
+def retrieve_code_snippets(query: str, k: int = 2) -> str:
+    """
+    Retrieve developer-approved Code Mode snippets from the RAG service
+    (POST /snippets/search). Returns "" on any failure so Code Mode still
+    works free-form when the service is down.
+    """
+    rag_url = os.getenv("RAG_API_URL", "http://localhost:8002").rstrip("/")
+    try:
+        r = requests.post(
+            f"{rag_url}/snippets/search",
+            json={"query": query, "k": k},
+            timeout=15,
+        )
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        blocks = [
+            f"--- {x['filename']} ---\n```python\n{x['code']}\n```"
+            for x in results
+            if x.get("code")
+        ]
+        return "\n\n".join(blocks)
+    except Exception as e:
+        print(f"Snippet retrieval failed: {e}")
+        return ""
+
+
 def is_climate_related_query(text: str) -> bool:
     """
     Check if a query is related to climate/SPEAR data and would benefit from RAG context.
@@ -962,12 +988,32 @@ Call create_plot with this data. Use plot_type="{plot_type}", color="{color}".
 """
 
 
-def build_augmented_user_prompt(user_text: str) -> str:
+def build_augmented_user_prompt(user_text: str, code_mode: bool = False) -> str:
     """
     Pull RAG context and return a user prompt augmented with it.
     RAG context is always fetched (when enabled) and the model decides whether to use it.
     Can be disabled by setting RAG_ENABLED=false in .env
+
+    In Code Mode, developer-approved reference snippets are injected instead of
+    document RAG (and the plot/tool reminders are skipped — no tools run there).
     """
+    if code_mode:
+        # Greetings / conversational follow-ups don't need snippets
+        if not is_climate_related_query(user_text):
+            return user_text
+        snippets = retrieve_code_snippets(
+            user_text, k=int(os.getenv("SNIPPET_TOP_K", "2"))
+        )
+        if not snippets.strip():
+            return user_text
+        return (
+            f"{user_text}\n\n"
+            "---\n"
+            "[DEVELOPER-APPROVED REFERENCE SNIPPETS — if one matches the request "
+            "above, base your code on it; ignore any that don't fit]:\n"
+            f"{snippets}"
+        )
+
     augmented = user_text
 
     # Add plot reminder if user is asking for a plot
@@ -1488,7 +1534,9 @@ if prompt := st.chat_input(
         st.markdown(prompt)
 
     # Build the augmented prompt (RAG is injected here, NOT as role=system)
-    augmented_prompt = build_augmented_user_prompt(prompt)
+    augmented_prompt = build_augmented_user_prompt(
+        prompt, code_mode=st.session_state.get("code_mode", False)
+    )
 
     # Store BOTH clean and augmented - display clean, send augmented to model
     st.session_state.messages.append({

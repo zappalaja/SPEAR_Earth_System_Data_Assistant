@@ -178,6 +178,7 @@ echo -e "${BLUE}[1/3] Starting RAG Service...${NC}"
     export INGESTION_SCRIPTS_DIR="$RAG_DIR/ingestion/scripts"
     export MERGED_MD_DIR="$RAG_DIR/ingestion/nougat_merged_md"
     export INPUT_PDF_DIR="$RAG_DIR/ingestion/pdfs"
+    export CODE_SNIPPETS_DIR="$PROJECT_DIR/chatbot/code_snippets"
 
     cd "$RAG_DIR"
     exec uvicorn rag_service:app --host 0.0.0.0 --port $RAG_PORT >> "$LOG_DIR/rag.log" 2>&1

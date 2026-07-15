@@ -1005,14 +1005,30 @@ add matplotlib code that operates on the loaded `da`/`ds`. Apply unit conversion
 with `.mean(dim=["lat", "lon"])`; for a map, select a single time. Label axes and units.
 """
 
+# Developer-approved reference snippets live in chatbot/code_snippets/ and are
+# retrieved per-request by the RAG service (POST /snippets/search), which embeds
+# each file's leading docstring in a dedicated Chroma collection. The matching
+# snippets are injected into the augmented user prompt, so the system prompt
+# stays constant-size no matter how many snippets exist.
+CODE_MODE_SNIPPET_NOTE = """
+**REFERENCE SNIPPETS.** Some user messages include a [DEVELOPER-APPROVED REFERENCE
+SNIPPETS] block retrieved for that request. When a snippet matches the request,
+base your code on it: keep its structure, API calls, and processing steps, changing
+only the request-specific values (variable, experiment, member, dates, bounds,
+units). Prefer a matching snippet over writing code from scratch; ignore snippets
+that don't fit the request.
+"""
+
 if ENABLE_NETCDF_TOOLS and not ENABLE_ARRAYLAKE_TOOLS:
     CODE_MODE_SYSTEM_PROMPT = (
         CODE_MODE_INSTRUCTIONS + CODE_MODE_NETCDF_ACCESS + CODE_MODE_PLOT_GUIDANCE
+        + CODE_MODE_SNIPPET_NOTE
     )
 else:
     # ArrayLake is the default/primary backend (matches SYSTEM_PROMPT selection above)
     CODE_MODE_SYSTEM_PROMPT = (
         CODE_MODE_INSTRUCTIONS + CODE_MODE_ARRAYLAKE_ACCESS + CODE_MODE_PLOT_GUIDANCE
+        + CODE_MODE_SNIPPET_NOTE
     )
 
 # Chat Interface Settings

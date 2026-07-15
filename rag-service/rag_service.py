@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 import hashlib
 import json
 import os
@@ -43,6 +44,10 @@ MERGED_MD_DIR = os.environ.get(
     "MERGED_MD_DIR",
     "/app/nougat_merged_md",
 )
+
+# Code Mode reference snippets (chatbot/code_snippets in the repo)
+CODE_SNIPPETS_DIR = os.environ.get("CODE_SNIPPETS_DIR", "/app/code_snippets")
+SNIPPETS_COLLECTION = os.environ.get("SNIPPETS_COLLECTION", "code_snippets")
 
 # Ingestion pipeline paths
 INGESTION_SCRIPTS_DIR = os.environ.get(
@@ -133,6 +138,107 @@ def query(req: QueryRequest):
 
         return QueryResponse(query=req.query, k=req.k, results=results)
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------- CODE MODE SNIPPETS ----------
+# A second Chroma collection (same persist dir, same embedding model) indexing
+# the developer-approved snippets in CODE_SNIPPETS_DIR. Each .py file's leading
+# docstring is embedded for matching; the full code rides along as metadata.
+
+_snippetdb = None
+_snippets_indexed = False
+
+
+def get_snippetdb() -> Chroma:
+    global _embeddings, _snippetdb
+    if _snippetdb is None:
+        if _embeddings is None:
+            _embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        _snippetdb = Chroma(
+            collection_name=SNIPPETS_COLLECTION,
+            persist_directory=PERSIST_DIR,
+            embedding_function=_embeddings,
+        )
+    return _snippetdb
+
+
+def _snippet_description(code: str, fname: str) -> str:
+    """The module docstring is what gets embedded for matching."""
+    try:
+        doc = ast.get_docstring(ast.parse(code))
+    except SyntaxError:
+        doc = None
+    return doc.strip() if doc else fname
+
+
+def reindex_snippets() -> int:
+    """Rebuild the snippet collection from CODE_SNIPPETS_DIR."""
+    global _snippets_indexed
+    db = get_snippetdb()
+    existing = db._collection.get()
+    if existing["ids"]:
+        db._collection.delete(ids=existing["ids"])
+
+    texts, metas, ids = [], [], []
+    if os.path.isdir(CODE_SNIPPETS_DIR):
+        for fname in sorted(os.listdir(CODE_SNIPPETS_DIR)):
+            if not fname.endswith(".py"):
+                continue
+            try:
+                code = (Path(CODE_SNIPPETS_DIR) / fname).read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if not code:
+                continue
+            desc = _snippet_description(code, fname)
+            texts.append(f"{fname}: {desc}")
+            metas.append({"filename": fname, "description": desc, "code": code})
+            ids.append(fname)
+    if texts:
+        db.add_texts(texts=texts, metadatas=metas, ids=ids)
+    _snippets_indexed = True
+    return len(texts)
+
+
+class SnippetSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    k: int = Field(2, ge=1, le=10)
+
+
+@app.post("/snippets/reindex")
+def snippets_reindex():
+    """Re-scan the snippets folder — call after adding/editing snippet files."""
+    try:
+        n = reindex_snippets()
+        return {"ok": True, "indexed": n, "dir": CODE_SNIPPETS_DIR}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/snippets/search")
+def snippets_search(req: SnippetSearchRequest):
+    try:
+        if not _snippets_indexed:
+            reindex_snippets()
+        db = get_snippetdb()
+        total = db._collection.count()
+        if total == 0:
+            return {"query": req.query, "results": []}
+        docs_and_scores = db.similarity_search_with_score(req.query, k=min(req.k, total))
+        return {
+            "query": req.query,
+            "results": [
+                {
+                    "filename": d.metadata.get("filename"),
+                    "description": d.metadata.get("description"),
+                    "code": d.metadata.get("code"),
+                    "score": float(s),
+                }
+                for d, s in docs_and_scores
+            ],
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
