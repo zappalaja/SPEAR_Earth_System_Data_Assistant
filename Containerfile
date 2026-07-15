@@ -70,6 +70,7 @@ COPY rag-service/rag_service.py /app/rag-service/
 COPY rag-service/ingestion/scripts/ /app/rag-service/ingestion/scripts/
 COPY chatbot/*.py chatbot/*.yaml /app/chatbot/
 COPY chatbot/pages/ /app/chatbot/pages/
+COPY chatbot/code_snippets/ /app/chatbot/code_snippets/
 COPY chatbot/avatars/ /app/chatbot/avatars/
 COPY chatbot/bot_avatar/ /app/chatbot/bot_avatar/
 COPY chatbot/background/ /app/chatbot/background/
@@ -95,6 +96,7 @@ ENV CHROMA_PERSIST_DIR=/app/chroma_db
 ENV CHROMA_COLLECTION=nougat_merged
 ENV EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ENV MERGED_MD_DIR=/app/nougat_merged_md
+ENV CODE_SNIPPETS_DIR=/app/chatbot/code_snippets
 
 # Ingestion pipeline paths
 ENV INGESTION_SCRIPTS_DIR=/app/rag-service/ingestion/scripts
