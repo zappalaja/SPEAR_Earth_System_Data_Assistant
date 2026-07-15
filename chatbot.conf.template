@@ -2,9 +2,9 @@
 # Copy this file to chatbot.conf and fill in your values.
 
 # ChromaDB location (where ingested documents are stored)
-# MUST be the absolute path!
-# "/home/YOUR_USERNAME/path/to/chroma_db"
-CHROMA_PERSIST_DIR="/home/$USER/SPEAR_Earth_System_Data_Assistant/rag-service/ingestion/chroma_db"
+# $PROJECT_DIR is set by start_unified.sh before this file is sourced; replace
+# with an absolute path if your chroma_db lives outside the repo
+CHROMA_PERSIST_DIR="$PROJECT_DIR/rag-service/ingestion/chroma_db"
 
 # ChromaDB collection name
 CHROMA_COLLECTION="nougat_merged"
