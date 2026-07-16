@@ -290,6 +290,17 @@ st.markdown("""
         font-weight: 700 !important;
         font-size: 1.1rem !important;
     }
+    /* LLM code blocks — white background (Prism token colors are mid-tone
+       and read fine on white; base text is already forced black). Scoped to
+       chat messages so nothing else changes. */
+    [data-testid="stChatMessage"] [data-testid="stCode"],
+    [data-testid="stChatMessage"] [data-testid="stCode"] pre {
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stChatMessage"] [data-testid="stCode"] {
+        border: 1px solid rgba(0, 0, 0, 0.25) !important;
+    }
     /* Copy button on LLM code blocks: white icon on a dark chip, shown at all
        times (default is dim and only appears on hover). Scoped to chat
        messages so the Tool Results expander keeps its default icon.
